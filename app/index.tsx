@@ -4,13 +4,19 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 export default function Index() {
   return (
     <LinearGradient
-      colors={["#f5e6d3", "#f0d9c0", "#faf0e6"]}
+      colors={["#0f0c29", "#302b63", "#24243e"]}
       style={styles.container}
     >
       <View style={styles.topSection}>
-        <Text style={styles.tagline}>YOUR JOURNEY STARTS HERE</Text>
-        <Text style={styles.title}>Fitness<Text style={styles.titleAccent}>AI</Text></Text>
-        <Text style={styles.subtitle}>The intelligent coach that{"\n"}trains, tracks, and transforms.</Text>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>✦ AI POWERED</Text>
+        </View>
+        <Text style={styles.title}>
+          Fitness<Text style={styles.titleAccent}>AI</Text>
+        </Text>
+        <Text style={styles.subtitle}>
+          The intelligent coach that{"\n"}trains, tracks, and transforms.
+        </Text>
       </View>
 
       <Image
@@ -20,9 +26,12 @@ export default function Index() {
 
       <View style={styles.bottomSection}>
         <TouchableOpacity style={styles.button}>
-          <Text style={styles.buttonText}>GET STARTED</Text>
+          <Text style={styles.buttonText}>GET STARTED →</Text>
         </TouchableOpacity>
-        <Text style={styles.loginText}>Already have an account? <Text style={styles.loginAccent}>Log in</Text></Text>
+        <Text style={styles.loginText}>
+          Already have an account?{" "}
+          <Text style={styles.loginAccent}>Log in</Text>
+        </Text>
       </View>
     </LinearGradient>
   );
@@ -33,37 +42,48 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 80,
-    paddingBottom: 60,
+    paddingTop: 70,
+    paddingBottom: 50,
   },
   topSection: {
     alignItems: "center",
+    paddingHorizontal: 32,
   },
-  tagline: {
+  badge: {
+    backgroundColor: "rgba(255,107,53,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,107,53,0.4)",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  badgeText: {
+    color: "#FF6B35",
     fontSize: 11,
-    letterSpacing: 4,
-    color: "#a08060",
-    marginBottom: 12,
+    fontWeight: "700",
+    letterSpacing: 3,
   },
   title: {
-    fontSize: 52,
+    fontSize: 58,
     fontWeight: "900",
-    color: "#1a1a1a",
+    color: "#ffffff",
     letterSpacing: 2,
   },
   titleAccent: {
     color: "#FF6B35",
   },
   subtitle: {
-    fontSize: 16,
-    color: "#7a6a5a",
+    fontSize: 15,
+    color: "rgba(255,255,255,0.55)",
     textAlign: "center",
     marginTop: 12,
-    lineHeight: 24,
+    lineHeight: 26,
+    letterSpacing: 0.3,
   },
   mascot: {
-    width: 320,
-    height: 380,
+    width: 340,
+    height: 400,
     resizeMode: "contain",
   },
   bottomSection: {
@@ -78,10 +98,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     shadowColor: "#FF6B35",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 10,
   },
   buttonText: {
     color: "#ffffff",
@@ -91,7 +111,7 @@ const styles = StyleSheet.create({
   },
   loginText: {
     marginTop: 20,
-    color: "#a08060",
+    color: "rgba(255,255,255,0.35)",
     fontSize: 14,
   },
   loginAccent: {
