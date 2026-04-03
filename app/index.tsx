@@ -1,4 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { Stack } from "expo-router";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function Index() {
@@ -7,6 +8,7 @@ export default function Index() {
       colors={["#0f0c29", "#302b63", "#24243e"]}
       style={styles.container}
     >
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.topSection}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>✦ AI POWERED</Text>
