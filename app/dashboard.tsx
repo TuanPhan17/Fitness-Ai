@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
     ScrollView,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 export default function Dashboard() {
+    const router = useRouter();
     const [name, setName] = useState("");
     const [calorieGoal, setCalorieGoal] = useState(0);
     const [proteinGoal, setProteinGoal] = useState(0);
@@ -56,7 +57,7 @@ export default function Dashboard() {
                     <Text style={styles.mainSub}>Goal: {calorieGoal}</Text>
                     <Text style={styles.mainSub}>Logged: {caloriesLogged}</Text>
                 </View>
-                <TouchableOpacity style={styles.logButton}>
+                <TouchableOpacity style={styles.logButton} onPress={() => router.push("/log-food")}>
                     <Text style={styles.logButtonText}>+ LOG FOOD</Text>
                 </TouchableOpacity>
             </View>
