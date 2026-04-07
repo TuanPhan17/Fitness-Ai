@@ -53,6 +53,11 @@ export default function Dashboard() {
             <View style={styles.mainCard}>
                 <Text style={styles.mainLabel}>CALORIES REMAINING</Text>
                 <Text style={styles.mainValue}>{caloriesLeft}</Text>
+                <View style={styles.progressBarBackground}>
+                    <View style={[styles.progressBarFill, {
+                        width: `${Math.min((caloriesLogged / calorieGoal) * 100, 100)}%`
+                    }]} />
+                </View>
                 <View style={styles.mainRow}>
                     <Text style={styles.mainSub}>Goal: {calorieGoal}</Text>
                     <Text style={styles.mainSub}>Logged: {caloriesLogged}</Text>
@@ -182,5 +187,16 @@ const styles = StyleSheet.create({
         color: "#ffffff",
         fontSize: 32,
         fontWeight: "800",
+    },
+    progressBarBackground: {
+        backgroundColor: "rgba(255,255,255,0.1)",
+        borderRadius: 6,
+        height: 8,
+        marginBottom: 20,
+    },
+    progressBarFill: {
+        backgroundColor: "#FF6B35",
+        borderRadius: 6,
+        height: 8,
     },
 });
