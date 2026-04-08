@@ -1,6 +1,10 @@
+// AsyncStorage lets us read and update the saved calorie/protein totals
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// useRouter lets us go back to the dashboard after logging
 import { useRouter } from "expo-router";
+// useState holds the form values as user types
 import { useState } from "react";
+// Import UI components
 import {
     KeyboardAvoidingView,
     Platform,
@@ -12,26 +16,35 @@ import {
 
 export default function LogFood() {
     const router = useRouter();
-    const [food, setFood] = useState("");
-    const [calories, setCalories] = useState("");
-    const [protein, setProtein] = useState("");
 
+    // State for each input field
+    const [food, setFood] = useState("");       // Food name
+    const [calories, setCalories] = useState(""); // Calories in this food
+    const [protein, setProtein] = useState("");   // Protein in this food
+
+    // Runs when user hits LOG IT
     const handleLog = async () => {
+        // Get the current logged totals from storage
         const prevCalories = await AsyncStorage.getItem("caloriesLogged");
         const prevProtein = await AsyncStorage.getItem("proteinLogged");
 
+        // Add the new food's calories to the existing total
         const newCalories =
             (parseInt(prevCalories || "0") + parseInt(calories || "0")).toString();
+        // Add the new food's protein to the existing total
         const newProtein =
             (parseInt(prevProtein || "0") + parseInt(protein || "0")).toString();
 
+        // Save the updated totals back to storage
         await AsyncStorage.setItem("caloriesLogged", newCalories);
         await AsyncStorage.setItem("proteinLogged", newProtein);
 
+        // Go back to dashboard — it will reload the updated numbers
         router.back();
     };
 
     return (
+        // Pushes content up when keyboard opens on iOS
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={styles.container}
@@ -39,6 +52,7 @@ export default function LogFood() {
             <Text style={styles.title}>Log Food</Text>
             <Text style={styles.subtitle}>What did you eat?</Text>
 
+            {/* Food name input */}
             <TextInput
                 style={styles.input}
                 placeholder="Food name (e.g. 2 eggs and rice)"
@@ -47,6 +61,7 @@ export default function LogFood() {
                 onChangeText={setFood}
             />
 
+            {/* Calories input — numeric keyboard */}
             <TextInput
                 style={styles.input}
                 placeholder="Calories"
@@ -56,6 +71,7 @@ export default function LogFood() {
                 onChangeText={setCalories}
             />
 
+            {/* Protein input — numeric keyboard */}
             <TextInput
                 style={styles.input}
                 placeholder="Protein (g)"
@@ -65,10 +81,12 @@ export default function LogFood() {
                 onChangeText={setProtein}
             />
 
+            {/* Submit button — adds food to daily totals */}
             <TouchableOpacity style={styles.button} onPress={handleLog}>
                 <Text style={styles.buttonText}>LOG IT →</Text>
             </TouchableOpacity>
 
+            {/* Cancel — goes back without saving */}
             <TouchableOpacity onPress={() => router.back()}>
                 <Text style={styles.cancel}>Cancel</Text>
             </TouchableOpacity>
@@ -81,7 +99,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#0f0c29",
         padding: 24,
-        justifyContent: "center",
+        justifyContent: "center", // Centers everything vertically
     },
     title: {
         color: "#ffffff",
