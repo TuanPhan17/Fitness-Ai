@@ -13,7 +13,7 @@
 // after logging food.
 // =====================================================
 
-// Import AsyncStorage to read saved user data
+// Import AsyncStorage to read saved user data (name, goals, weight)
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // useFocusEffect runs code every time this screen comes into focus
 // useRouter lets us navigate between screens
@@ -28,6 +28,12 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
+
+// Import the storage helper. Daily totals (calories/protein/fats/carbs)
+// are now CALCULATED by summing every logged food item, instead of being
+// read from separate stored totals. This keeps the dashboard in sync with
+// the log history automatically — delete a food and the totals drop.
+import { getDailyTotals } from "../services/storage";
 
 export default function Dashboard() {
     // Router lets us push to other screens like log-food
@@ -52,25 +58,24 @@ export default function Dashboard() {
         useCallback(() => {
             const load = async () => {
                 try {
-                    // Get each value from storage using its key
+                    // Profile + goals still live as simple stored values.
                     const n = await AsyncStorage.getItem("userName");
                     const cg = await AsyncStorage.getItem("calorieGoal");
                     const pg = await AsyncStorage.getItem("proteinGoal");
-                    const cl = await AsyncStorage.getItem("caloriesLogged");
-                    const pl = await AsyncStorage.getItem("proteinLogged");
-                    const fl = await AsyncStorage.getItem("fatsLogged");
-                    const cbl = await AsyncStorage.getItem("carbsLogged");
                     const cw = await AsyncStorage.getItem("currentWeight");
 
-                    // Only update state if the value actually exists
                     if (n) setName(n);
                     if (cg) setCalorieGoal(parseInt(cg));
                     if (pg) setProteinGoal(parseInt(pg));
-                    if (cl) setCaloriesLogged(parseInt(cl));
-                    if (pl) setProteinLogged(parseInt(pl));
-                    if (fl) setFatsLogged(parseInt(fl));
-                    if (cbl) setCarbsLogged(parseInt(cbl));
                     if (cw) setCurrentWeight(cw);
+
+                    // Today's logged macros are CALCULATED from the items array,
+                    // so they always match what's in the log history screen.
+                    const totals = await getDailyTotals();
+                    setCaloriesLogged(totals.calories);
+                    setProteinLogged(totals.protein);
+                    setFatsLogged(totals.fats);
+                    setCarbsLogged(totals.carbs);
                 } catch (err) {
                     console.error("Failed to load dashboard data:", err);
                 }
@@ -125,6 +130,14 @@ export default function Dashboard() {
                     onPress={() => router.push("/log-food")}
                 >
                     <Text style={styles.logButtonText}>+ LOG FOOD</Text>
+                </TouchableOpacity>
+
+                {/* Navigate to the log history screen to view/edit/delete entries */}
+                <TouchableOpacity
+                    style={styles.viewLogButton}
+                    onPress={() => router.push("/log-history")}
+                >
+                    <Text style={styles.viewLogButtonText}>VIEW TODAY'S LOG</Text>
                 </TouchableOpacity>
             </View>
 
@@ -244,6 +257,18 @@ const styles = StyleSheet.create({
         color: "#ffffff",
         fontSize: 14,
         fontWeight: "800",
+        letterSpacing: 2,
+    },
+    viewLogButton: {
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: "center",
+        marginTop: 10,
+    },
+    viewLogButtonText: {
+        color: "rgba(255,255,255,0.5)",
+        fontSize: 12,
+        fontWeight: "700",
         letterSpacing: 2,
     },
 

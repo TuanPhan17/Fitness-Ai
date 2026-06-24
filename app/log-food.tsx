@@ -12,7 +12,6 @@
 // Matches the existing dark purple + orange theme.
 // =====================================================
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
@@ -30,6 +29,11 @@ import {
 // Import our USDA search service
 // Make sure to create: services/nutrition.ts (included in this project)
 import { searchFood, type NutritionItem } from "../services/nutrition";
+
+// Import the storage helper — this is the single source of truth for
+// logged food. We add items through addLoggedItem() instead of writing
+// raw totals to AsyncStorage. The dashboard sums these items for display.
+import { addLoggedItem } from "../services/storage";
 
 export default function LogFood() {
     const router = useRouter();
@@ -90,26 +94,20 @@ export default function LogFood() {
     }, []);
 
     // ── Log a food item from search results ──
-    // When user taps a search result, add its macros to daily totals.
+    // When the user taps a search result, we save it as its own entry
+    // in the log (not just bump the totals). The dashboard recalculates
+    // totals by summing all logged items.
     const handleLogFromSearch = async (item: NutritionItem) => {
         try {
-            // Read current totals from storage (default to "0" if nothing saved yet)
-            const prevCalories = await AsyncStorage.getItem("caloriesLogged");
-            const prevProtein = await AsyncStorage.getItem("proteinLogged");
-            const prevFats = await AsyncStorage.getItem("fatsLogged");
-            const prevCarbs = await AsyncStorage.getItem("carbsLogged");
-
-            // Add the selected food's macros to the running totals
-            const newCalories = (parseInt(prevCalories || "0") + item.calories).toString();
-            const newProtein = (parseInt(prevProtein || "0") + item.protein).toString();
-            const newFats = (parseInt(prevFats || "0") + item.fats).toString();
-            const newCarbs = (parseInt(prevCarbs || "0") + item.carbs).toString();
-
-            // Save updated totals back to storage
-            await AsyncStorage.setItem("caloriesLogged", newCalories);
-            await AsyncStorage.setItem("proteinLogged", newProtein);
-            await AsyncStorage.setItem("fatsLogged", newFats);
-            await AsyncStorage.setItem("carbsLogged", newCarbs);
+            // Add this food as a new entry in today's log.
+            await addLoggedItem({
+                name: item.name,
+                brand: item.brand,
+                calories: item.calories,
+                protein: item.protein,
+                fats: item.fats,
+                carbs: item.carbs,
+            });
 
             // Show success feedback — briefly flash "Logged!" on the tapped item
             setSuccessMessage(item.id);
@@ -168,28 +166,14 @@ export default function LogFood() {
         }
 
         try {
-            // Read current totals and add the new values
-            const prevCalories = await AsyncStorage.getItem("caloriesLogged");
-            const prevProtein = await AsyncStorage.getItem("proteinLogged");
-            const prevFats = await AsyncStorage.getItem("fatsLogged");
-            const prevCarbs = await AsyncStorage.getItem("carbsLogged");
-
-            await AsyncStorage.setItem(
-                "caloriesLogged",
-                (parseInt(prevCalories || "0") + calNum).toString()
-            );
-            await AsyncStorage.setItem(
-                "proteinLogged",
-                (parseInt(prevProtein || "0") + proNum).toString()
-            );
-            await AsyncStorage.setItem(
-                "fatsLogged",
-                (parseInt(prevFats || "0") + fatNum).toString()
-            );
-            await AsyncStorage.setItem(
-                "carbsLogged",
-                (parseInt(prevCarbs || "0") + carbNum).toString()
-            );
+            // Save the manually entered food as its own entry in today's log.
+            await addLoggedItem({
+                name: food.trim(),
+                calories: calNum,
+                protein: proNum,
+                fats: fatNum,
+                carbs: carbNum,
+            });
 
             // Navigate back to dashboard — it will reload with updated numbers
             router.back();

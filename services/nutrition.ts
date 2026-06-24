@@ -11,9 +11,15 @@
 // =====================================================
 
 // ── Your free USDA API key ──
-// Get one in 30 seconds at: https://fdc.nal.usda.gov/api-key-signup/
-// They email it to you instantly. Paste it below.
-const USDA_API_KEY = "YOUR_USDA_API_KEY_HERE";
+// The key is loaded from an environment variable, NOT hardcoded here,
+// so it never gets committed to git. Set it in a local file named
+// ".env.local" (which is git-ignored):
+//
+//   EXPO_PUBLIC_USDA_API_KEY=your_key_here
+//
+// Expo automatically loads any EXPO_PUBLIC_* variable into process.env.
+// Get a free key in 30 seconds: https://fdc.nal.usda.gov/api-key-signup/
+const USDA_API_KEY = process.env.EXPO_PUBLIC_USDA_API_KEY ?? "";
 
 // Base URL for all USDA FoodData Central API requests
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
@@ -77,6 +83,16 @@ export async function searchFood(query: string): Promise<NutritionItem[]> {
 
     // Reject queries that are too short (likely typos or accidental input)
     if (trimmed.length < 2) return [];
+
+    // ── Guard: make sure the API key is configured ──
+    // If EXPO_PUBLIC_USDA_API_KEY isn't set, fail loudly in the console
+    // with a clear message instead of sending a broken request.
+    if (!USDA_API_KEY) {
+        console.error(
+            "USDA API key is missing. Copy .env.example to .env.local and add your key, then restart Expo with: npx expo start --clear"
+        );
+        return [];
+    }
 
     try {
         const response = await fetch(`${USDA_BASE}/foods/search?api_key=${USDA_API_KEY}`, {
