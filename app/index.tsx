@@ -1,13 +1,58 @@
+// AsyncStorage lets us check whether the user has already onboarded
+import AsyncStorage from "@react-native-async-storage/async-storage";
 // LinearGradient creates the gradient background effect
 import { LinearGradient } from "expo-linear-gradient";
 // Stack manages the navigation stack, useRouter lets us navigate
 import { Stack, useRouter } from "expo-router";
-// Image displays the mascot, other components for layout
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+// React hooks for the launch check
+import { useEffect, useState } from "react";
+// ActivityIndicator shows a spinner while we check storage
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function Index() {
     // Router lets us push to other screens
     const router = useRouter();
+
+    // While true, we're still checking storage — show a spinner instead
+    // of flashing the welcome screen at a returning user.
+    const [checking, setChecking] = useState(true);
+
+    // ── On launch: has this person already set up their goals? ──
+    // If a calorieGoal exists in storage, they've onboarded before, so we
+    // send them straight to the dashboard. If not, they're new — show the
+    // welcome screen below. This is why you only see onboarding once.
+    useEffect(() => {
+        const checkOnboarded = async () => {
+            try {
+                const calorieGoal = await AsyncStorage.getItem("calorieGoal");
+                if (calorieGoal) {
+                    // Returning user — skip welcome + onboarding entirely.
+                    // replace() (not push) so the back button doesn't return here.
+                    router.replace("/dashboard");
+                    return;
+                }
+            } catch (err) {
+                console.error("Failed to check onboarding status:", err);
+            }
+            // New user (or check failed) — show the welcome screen.
+            setChecking(false);
+        };
+        checkOnboarded();
+    }, [router]);
+
+    // ── While checking, show a simple loading spinner ──
+    // Prevents the welcome screen from flashing before we redirect.
+    if (checking) {
+        return (
+            <LinearGradient
+                colors={["#0f0c29", "#302b63", "#24243e"]}
+                style={[styles.container, styles.loadingContainer]}
+            >
+                <Stack.Screen options={{ headerShown: false }} />
+                <ActivityIndicator size="large" color="#FF6B35" />
+            </LinearGradient>
+        );
+    }
 
     return (
         // Gradient background — goes from dark purple to dark blue
@@ -48,11 +93,15 @@ export default function Index() {
                     <Text style={styles.buttonText}>GET STARTED →</Text>
                 </TouchableOpacity>
 
-                {/* Login link for returning users */}
-                <Text style={styles.loginText}>
-                    Already have an account?{" "}
-                    <Text style={styles.loginAccent}>Log in</Text>
-                </Text>
+                {/* Login link for returning users. No auth yet (that's
+                    Layer 3), so this just routes to the dashboard, which
+                    reads any saved data. */}
+                <TouchableOpacity onPress={() => router.replace("/dashboard")}>
+                    <Text style={styles.loginText}>
+                        Already have an account?{" "}
+                        <Text style={styles.loginAccent}>Log in</Text>
+                    </Text>
+                </TouchableOpacity>
             </View>
         </LinearGradient>
     );
@@ -65,6 +114,9 @@ const styles = StyleSheet.create({
         justifyContent: "space-between", // Spreads top, middle, bottom apart
         paddingTop: 70,
         paddingBottom: 50,
+    },
+    loadingContainer: {
+        justifyContent: "center", // Center the spinner vertically
     },
     topSection: {
         alignItems: "center",

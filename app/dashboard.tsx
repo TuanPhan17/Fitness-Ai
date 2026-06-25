@@ -22,6 +22,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 // Import all the UI components we need from React Native
 import {
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -33,7 +34,14 @@ import {
 // are now CALCULATED by summing every logged food item, instead of being
 // read from separate stored totals. This keeps the dashboard in sync with
 // the log history automatically — delete a food and the totals drop.
-import { getDailyTotals } from "../services/storage";
+//
+// checkAndRolloverDay() handles the daily reset: if it's a new day, it
+// archives yesterday's log and starts today fresh.
+import {
+    checkAndRolloverDay,
+    clearLoggedItems,
+    getDailyTotals
+} from "../services/storage";
 
 export default function Dashboard() {
     // Router lets us push to other screens like log-food
@@ -50,39 +58,69 @@ export default function Dashboard() {
     const [carbsLogged, setCarbsLogged] = useState(0);       // Carbs logged today
     const [currentWeight, setCurrentWeight] = useState("");   // User's current weight
 
+    // ── Load all dashboard data ──
+    // Pulled out as its own function so it can be called both on screen
+    // focus AND after the user resets the day (to refresh the numbers).
+    const loadData = useCallback(async () => {
+        try {
+            // First, check if a new day has begun. If so, this archives
+            // yesterday's log and clears today so we start fresh.
+            await checkAndRolloverDay();
+
+            // Profile + goals still live as simple stored values.
+            const n = await AsyncStorage.getItem("userName");
+            const cg = await AsyncStorage.getItem("calorieGoal");
+            const pg = await AsyncStorage.getItem("proteinGoal");
+            const cw = await AsyncStorage.getItem("currentWeight");
+
+            if (n) setName(n);
+            if (cg) setCalorieGoal(parseInt(cg));
+            if (pg) setProteinGoal(parseInt(pg));
+            if (cw) setCurrentWeight(cw);
+
+            // Today's logged macros are CALCULATED from the items array,
+            // so they always match what's in the log history screen.
+            const totals = await getDailyTotals();
+            setCaloriesLogged(totals.calories);
+            setProteinLogged(totals.protein);
+            setFatsLogged(totals.fats);
+            setCarbsLogged(totals.carbs);
+        } catch (err) {
+            console.error("Failed to load dashboard data:", err);
+        }
+    }, []);
+
     // ── Load data on every screen focus ──
     // useFocusEffect runs every time the dashboard screen is opened.
     // This makes sure the data is always fresh when you navigate back
     // from the log-food screen.
     useFocusEffect(
         useCallback(() => {
-            const load = async () => {
-                try {
-                    // Profile + goals still live as simple stored values.
-                    const n = await AsyncStorage.getItem("userName");
-                    const cg = await AsyncStorage.getItem("calorieGoal");
-                    const pg = await AsyncStorage.getItem("proteinGoal");
-                    const cw = await AsyncStorage.getItem("currentWeight");
-
-                    if (n) setName(n);
-                    if (cg) setCalorieGoal(parseInt(cg));
-                    if (pg) setProteinGoal(parseInt(pg));
-                    if (cw) setCurrentWeight(cw);
-
-                    // Today's logged macros are CALCULATED from the items array,
-                    // so they always match what's in the log history screen.
-                    const totals = await getDailyTotals();
-                    setCaloriesLogged(totals.calories);
-                    setProteinLogged(totals.protein);
-                    setFatsLogged(totals.fats);
-                    setCarbsLogged(totals.carbs);
-                } catch (err) {
-                    console.error("Failed to load dashboard data:", err);
-                }
-            };
-            load();
-        }, [])
+            loadData();
+        }, [loadData])
     );
+
+    // ── Manually reset today's log ──
+    // Clears every food logged today (after a confirm dialog), then
+    // reloads the dashboard so the numbers drop back to zero. Useful when
+    // you want a fresh start mid-day. Does NOT touch archived history.
+    const handleResetDay = () => {
+        Alert.alert(
+            "Reset today's log?",
+            "This clears all foods you've logged today. This can't be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Reset",
+                    style: "destructive",
+                    onPress: async () => {
+                        await clearLoggedItems();
+                        loadData(); // Refresh — totals go back to zero
+                    },
+                },
+            ]
+        );
+    };
 
     // ── Calculated values ──
     // How many calories and protein are left for the day
@@ -180,6 +218,18 @@ export default function Dashboard() {
                     <Text style={styles.cardSub}>lbs</Text>
                 </View>
             </View>
+
+            {/* ── Reset today's log ──
+                A low-emphasis action at the bottom — clears today's foods
+                after a confirm dialog. The daily rollover handles this
+                automatically each new day, so this is just for a manual
+                fresh start. */}
+            <TouchableOpacity
+                style={styles.resetButton}
+                onPress={handleResetDay}
+            >
+                <Text style={styles.resetButtonText}>Reset Today's Log</Text>
+            </TouchableOpacity>
         </ScrollView>
     );
 }
@@ -270,6 +320,17 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "700",
         letterSpacing: 2,
+    },
+    resetButton: {
+        paddingVertical: 16,
+        alignItems: "center",
+        marginTop: 8,
+        marginBottom: 32,
+    },
+    resetButtonText: {
+        color: "rgba(255,107,53,0.7)",
+        fontSize: 14,
+        fontWeight: "600",
     },
 
     // ── Macro cards row (Protein / Fats / Carbs) ──

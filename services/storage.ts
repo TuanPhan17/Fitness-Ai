@@ -42,8 +42,34 @@ export interface DailyTotals {
     carbs: number;
 }
 
-// The single AsyncStorage key where the array of logged items lives.
-const LOGGED_ITEMS_KEY = "loggedItems";
+// ── The shape of one archived day ──
+// When a new day begins, the previous day's items are rolled into one
+// of these and stored in history. This powers future "progress over
+// time" features (weekly trends, streaks, etc.) and means a day's data
+// is never silently thrown away.
+export interface DayLog {
+    date: string;          // The day this log belongs to, as "YYYY-MM-DD"
+    items: LoggedItem[];   // Every food logged that day
+    totals: DailyTotals;   // Pre-computed totals for that day
+}
+
+// ── AsyncStorage keys ──
+// Keeping every key in one place avoids typos and makes the storage
+// shape easy to see at a glance.
+const LOGGED_ITEMS_KEY = "loggedItems";   // Today's array of LoggedItem
+const CURRENT_DATE_KEY = "currentLogDate"; // The "YYYY-MM-DD" today's log belongs to
+const HISTORY_KEY = "dayHistory";          // Array of archived DayLog objects
+
+// ── Get today's date as a "YYYY-MM-DD" string ──
+// We compare DATES (not timestamps) to decide if a new day has begun.
+// Using local time means the day rolls over at the user's midnight, not UTC.
+function getTodayKey(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
 
 // ── Generate a unique ID for a new log entry ──
 // Combines the current time with a random suffix so two foods logged
@@ -74,6 +100,13 @@ export async function getLoggedItems(): Promise<LoggedItem[]> {
 export async function addLoggedItem(
     food: Omit<LoggedItem, "id" | "loggedAt">
 ): Promise<LoggedItem> {
+    // Make sure today's log is stamped with today's date. This covers the
+    // case where the very first food is logged before any rollover check.
+    const storedDate = await AsyncStorage.getItem(CURRENT_DATE_KEY);
+    if (!storedDate) {
+        await AsyncStorage.setItem(CURRENT_DATE_KEY, getTodayKey());
+    }
+
     const items = await getLoggedItems();
 
     // Build the full entry with a generated id + timestamp.
@@ -111,16 +144,88 @@ export async function updateLoggedItem(
 }
 
 // ── Clear the entire day's log ──
-// Used by a "reset day" button, or at midnight rollover later.
+// Used by the manual "reset day" button. Wipes today's items but does
+// NOT touch archived history.
 export async function clearLoggedItems(): Promise<void> {
     await AsyncStorage.removeItem(LOGGED_ITEMS_KEY);
+    // Re-stamp the current date so a fresh start still belongs to today.
+    await AsyncStorage.setItem(CURRENT_DATE_KEY, getTodayKey());
 }
 
-// ── Calculate today's totals from the logged items ──
-// Sums every item's macros into one DailyTotals object. This is what
-// the dashboard displays instead of reading stored totals directly.
-export async function getDailyTotals(): Promise<DailyTotals> {
-    const items = await getLoggedItems();
+// ── Read the archived day history ──
+// Returns every past day that's been rolled over, newest handling left
+// to the caller. Empty array if there's no history yet.
+export async function getDayHistory(): Promise<DayLog[]> {
+    try {
+        const raw = await AsyncStorage.getItem(HISTORY_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        console.error("Failed to read day history:", err);
+        return [];
+    }
+}
+
+// ── Archive a day's items into history ──
+// Internal helper. Wraps the items in a DayLog (with date + totals) and
+// prepends it to the stored history array (newest first).
+async function archiveDay(date: string, items: LoggedItem[]): Promise<void> {
+    // Nothing logged that day? Don't clutter history with an empty entry.
+    if (items.length === 0) return;
+
+    const history = await getDayHistory();
+    const dayLog: DayLog = {
+        date,
+        items,
+        totals: calculateTotals(items),
+    };
+
+    // Newest day first so a future history screen reads top-to-bottom.
+    history.unshift(dayLog);
+    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+// ── Check for a new day and roll over if needed ──
+// THIS IS THE HEART OF THE DAILY RESET.
+//
+// Call this once when the app loads (and when the dashboard refocuses).
+// It compares the date stamped on today's log to the real today:
+//
+//   • First ever launch  → just stamp today's date, nothing to archive.
+//   • Still the same day  → do nothing, keep the current log.
+//   • A NEW day has begun → archive yesterday's items into history,
+//                           clear the live log, stamp the new date.
+//
+// Returns true if a rollover happened (useful if a screen wants to react).
+export async function checkAndRolloverDay(): Promise<boolean> {
+    const today = getTodayKey();
+    const storedDate = await AsyncStorage.getItem(CURRENT_DATE_KEY);
+
+    // First launch ever — no date stored yet. Stamp today and stop.
+    if (!storedDate) {
+        await AsyncStorage.setItem(CURRENT_DATE_KEY, today);
+        return false;
+    }
+
+    // Same day — nothing to do.
+    if (storedDate === today) {
+        return false;
+    }
+
+    // It's a new day. Archive the old day's items, then clear for today.
+    const yesterdayItems = await getLoggedItems();
+    await archiveDay(storedDate, yesterdayItems);
+
+    await AsyncStorage.removeItem(LOGGED_ITEMS_KEY);
+    await AsyncStorage.setItem(CURRENT_DATE_KEY, today);
+    return true;
+}
+
+// ── Calculate totals from any array of logged items ──
+// Pure helper (no storage access) so it can be reused — both for today's
+// totals and for pre-computing an archived day's totals during rollover.
+export function calculateTotals(items: LoggedItem[]): DailyTotals {
     return items.reduce<DailyTotals>(
         (totals, item) => ({
             calories: totals.calories + item.calories,
@@ -130,4 +235,12 @@ export async function getDailyTotals(): Promise<DailyTotals> {
         }),
         { calories: 0, protein: 0, fats: 0, carbs: 0 }
     );
+}
+
+// ── Calculate today's totals from the logged items ──
+// Sums every item's macros into one DailyTotals object. This is what
+// the dashboard displays instead of reading stored totals directly.
+export async function getDailyTotals(): Promise<DailyTotals> {
+    const items = await getLoggedItems();
+    return calculateTotals(items);
 }
