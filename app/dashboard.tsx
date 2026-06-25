@@ -177,6 +177,14 @@ export default function Dashboard() {
                 >
                     <Text style={styles.viewLogButtonText}>VIEW TODAY'S LOG</Text>
                 </TouchableOpacity>
+
+                {/* Navigate to the history screen to see past days */}
+                <TouchableOpacity
+                    style={styles.viewLogButton}
+                    onPress={() => router.push("/history")}
+                >
+                    <Text style={styles.viewLogButtonText}>VIEW HISTORY</Text>
+                </TouchableOpacity>
             </View>
 
             {/* ── Macro cards — Protein, Fats, Carbs ── */}
