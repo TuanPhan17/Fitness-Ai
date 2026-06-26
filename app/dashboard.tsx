@@ -29,7 +29,8 @@ import Svg, { Circle } from "react-native-svg";
 import {
     checkAndRolloverDay,
     clearLoggedItems,
-    getDailyTotals
+    getDailyTotals,
+    getWeightProgress
 } from "../services/storage";
 
 // =====================================================
@@ -143,6 +144,9 @@ export default function Dashboard() {
     const [fatsLogged, setFatsLogged] = useState(0);
     const [carbsLogged, setCarbsLogged] = useState(0);
     const [currentWeight, setCurrentWeight] = useState("");
+    // How much weight has changed since the start (negative = lost). Shown
+    // as a small progress note on the weight card.
+    const [weightChange, setWeightChange] = useState(0);
 
     // ── Load all dashboard data ──
     const loadData = useCallback(async () => {
@@ -153,12 +157,16 @@ export default function Dashboard() {
             const n = await AsyncStorage.getItem("userName");
             const cg = await AsyncStorage.getItem("calorieGoal");
             const pg = await AsyncStorage.getItem("proteinGoal");
-            const cw = await AsyncStorage.getItem("currentWeight");
 
             if (n) setName(n);
             if (cg) setCalorieGoal(parseInt(cg));
             if (pg) setProteinGoal(parseInt(pg));
-            if (cw) setCurrentWeight(cw);
+
+            // Weight: pull the progress summary so the card shows the latest
+            // weigh-in plus how much has changed since the start.
+            const wp = await getWeightProgress();
+            if (wp.current !== null) setCurrentWeight(String(wp.current));
+            setWeightChange(wp.changeFromStart);
 
             // Totals are summed from logged items, so they always match
             // the log history.
@@ -296,10 +304,24 @@ export default function Dashboard() {
             {/* ── Weight + quick links ── */}
             <View style={styles.section}>
                 <View style={styles.dualRow}>
-                    <View style={styles.weightCard}>
+                    <TouchableOpacity
+                        style={styles.weightCard}
+                        onPress={() => router.push("/weight")}
+                        activeOpacity={0.8}
+                    >
                         <Text style={styles.weightValue}>{currentWeight || "—"}</Text>
                         <Text style={styles.weightLabel}>LBS</Text>
-                    </View>
+                        {weightChange !== 0 && (
+                            <Text
+                                style={[
+                                    styles.weightChange,
+                                    { color: weightChange < 0 ? "#4DDB8F" : "#FF6B6B" },
+                                ]}
+                            >
+                                {weightChange < 0 ? "▼" : "▲"} {Math.abs(weightChange)} lbs
+                            </Text>
+                        )}
+                    </TouchableOpacity>
                     <View style={styles.linkColumn}>
                         <TouchableOpacity
                             style={styles.linkButton}
@@ -528,6 +550,11 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         letterSpacing: 2,
         marginTop: 2,
+    },
+    weightChange: {
+        fontSize: 13,
+        fontWeight: "800",
+        marginTop: 6,
     },
     linkColumn: {
         flex: 1,

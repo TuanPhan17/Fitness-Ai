@@ -59,6 +59,7 @@ export interface DayLog {
 const LOGGED_ITEMS_KEY = "loggedItems";   // Today's array of LoggedItem
 const CURRENT_DATE_KEY = "currentLogDate"; // The "YYYY-MM-DD" today's log belongs to
 const HISTORY_KEY = "dayHistory";          // Array of archived DayLog objects
+const WEIGH_INS_KEY = "weighIns";          // Array of WeighIn entries over time
 
 // ── Get today's date as a "YYYY-MM-DD" string ──
 // We compare DATES (not timestamps) to decide if a new day has begun.
@@ -243,4 +244,114 @@ export function calculateTotals(items: LoggedItem[]): DailyTotals {
 export async function getDailyTotals(): Promise<DailyTotals> {
     const items = await getLoggedItems();
     return calculateTotals(items);
+}
+
+// =====================================================
+// WEIGHT TRACKING
+//
+// Each weigh-in is stored as its own entry with a date, so the app can
+// show progress over time (starting → current → goal) and a history of
+// every measurement. Same array-based pattern as the food log.
+// =====================================================
+
+// ── The shape of one weigh-in ──
+export interface WeighIn {
+    id: string;       // Unique id (so we can delete a specific entry)
+    weight: number;   // Body weight in lbs
+    date: string;     // "YYYY-MM-DD" the weigh-in was recorded
+    loggedAt: number; // Timestamp (ms) for precise sorting
+}
+
+// ── Read every weigh-in (oldest → newest by time) ──
+// Returns an empty array if none recorded yet (or on error).
+export async function getWeighIns(): Promise<WeighIn[]> {
+    try {
+        const raw = await AsyncStorage.getItem(WEIGH_INS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        // Always hand back in chronological order so callers don't have to.
+        return parsed.sort((a, b) => a.loggedAt - b.loggedAt);
+    } catch (err) {
+        console.error("Failed to read weigh-ins:", err);
+        return [];
+    }
+}
+
+// ── Add a new weigh-in ──
+// Saves the weight stamped with today's date + a timestamp. Also mirrors
+// the value into "currentWeight" so the dashboard's weight card and any
+// other screen reading that key stay in sync with the latest measurement.
+export async function addWeighIn(weight: number): Promise<WeighIn> {
+    const entries = await getWeighIns();
+
+    const newEntry: WeighIn = {
+        id: generateId(),
+        weight,
+        date: getTodayKey(),
+        loggedAt: Date.now(),
+    };
+
+    entries.push(newEntry);
+    await AsyncStorage.setItem(WEIGH_INS_KEY, JSON.stringify(entries));
+    // Keep the simple "currentWeight" value pointing at the latest weigh-in.
+    await AsyncStorage.setItem("currentWeight", weight.toString());
+    return newEntry;
+}
+
+// ── Delete a weigh-in by id ──
+// After deleting, re-point "currentWeight" at whatever the newest
+// remaining weigh-in is (or leave it if none remain).
+export async function deleteWeighIn(id: string): Promise<void> {
+    const entries = await getWeighIns();
+    const filtered = entries.filter((e) => e.id !== id);
+    await AsyncStorage.setItem(WEIGH_INS_KEY, JSON.stringify(filtered));
+
+    // Keep currentWeight accurate after a deletion.
+    if (filtered.length > 0) {
+        const latest = filtered[filtered.length - 1];
+        await AsyncStorage.setItem("currentWeight", latest.weight.toString());
+    }
+}
+
+// ── The shape of a weight progress summary ──
+export interface WeightProgress {
+    starting: number | null;  // First recorded weight (or onboarding weight)
+    current: number | null;   // Most recent weigh-in
+    goal: number | null;      // Goal weight from onboarding
+    changeFromStart: number;  // current − starting (negative = lost weight)
+    toGoal: number;           // current − goal (how far left)
+}
+
+// ── Build a progress summary for the weight screen + dashboard ──
+// "Starting" prefers the earliest weigh-in; if there are none yet, it
+// falls back to the weight entered during onboarding so the very first
+// view still shows something meaningful.
+export async function getWeightProgress(): Promise<WeightProgress> {
+    const entries = await getWeighIns();
+
+    const onboardingWeightRaw = await AsyncStorage.getItem("currentWeight");
+    const goalRaw = await AsyncStorage.getItem("goalWeight");
+
+    const goal = goalRaw ? parseFloat(goalRaw) : null;
+
+    // Starting weight: earliest weigh-in, else the onboarding value.
+    let starting: number | null = null;
+    let current: number | null = null;
+
+    if (entries.length > 0) {
+        starting = entries[0].weight;
+        current = entries[entries.length - 1].weight;
+    } else if (onboardingWeightRaw) {
+        // No weigh-ins yet — use onboarding weight as both start + current.
+        starting = parseFloat(onboardingWeightRaw);
+        current = parseFloat(onboardingWeightRaw);
+    }
+
+    const changeFromStart =
+        starting !== null && current !== null ? current - starting : 0;
+    const toGoal =
+        current !== null && goal !== null ? current - goal : 0;
+
+    return { starting, current, goal, changeFromStart, toGoal };
 }
