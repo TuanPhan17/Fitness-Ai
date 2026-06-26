@@ -1,26 +1,20 @@
 // dashboard.tsx
 // =====================================================
-// DASHBOARD — Your daily nutrition overview.
+// DASHBOARD — Your daily nutrition command center.
 //
-// Shows:
-// - Calories remaining (big card with progress bar)
-// - Protein, Fats, Carbs left (3 cards in a row)
-// - Current weight
-// - Log food button → navigates to log-food screen
+// The hero is a large calorie ring: the single commanding element that
+// shows, at a glance, how much fuel is left in the day. Everything else
+// (macros, weight, actions) stays quiet and disciplined around it.
 //
-// All data is loaded from AsyncStorage every time this
-// screen comes into focus, so it's always up to date
-// after logging food.
+// All data is loaded from AsyncStorage every time this screen comes into
+// focus, so it's always fresh after logging food. Daily totals are summed
+// from individual logged items (see services/storage.ts), and a new day
+// automatically rolls the previous day into history.
 // =====================================================
 
-// Import AsyncStorage to read saved user data (name, goals, weight)
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// useFocusEffect runs code every time this screen comes into focus
-// useRouter lets us navigate between screens
 import { useFocusEffect, useRouter } from "expo-router";
-// useCallback and useState are React hooks
 import { useCallback, useState } from "react";
-// Import all the UI components we need from React Native
 import {
     Alert,
     ScrollView,
@@ -29,45 +23,133 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
+// Svg powers the calorie progress ring (clean stroke-based arc).
+import Svg, { Circle } from "react-native-svg";
 
-// Import the storage helper. Daily totals (calories/protein/fats/carbs)
-// are now CALCULATED by summing every logged food item, instead of being
-// read from separate stored totals. This keeps the dashboard in sync with
-// the log history automatically — delete a food and the totals drop.
-//
-// checkAndRolloverDay() handles the daily reset: if it's a new day, it
-// archives yesterday's log and starts today fresh.
 import {
     checkAndRolloverDay,
     clearLoggedItems,
     getDailyTotals
 } from "../services/storage";
 
+// =====================================================
+// CalorieRing — the hero element.
+//
+// A circular progress ring drawn with SVG. A background track circle sits
+// under an orange progress arc. The arc length is controlled by
+// strokeDasharray/strokeDashoffset: as more calories are logged, the
+// orange sweeps clockwise from the top. Rounded caps keep it premium.
+// =====================================================
+function CalorieRing({
+    progress,    // 0–100, how much of the goal is logged
+    centerValue, // big number in the middle (calories left)
+    centerLabel, // small label under the number
+}: {
+    progress: number;
+    centerValue: number;
+    centerLabel: string;
+}) {
+    const size = 240;        // Overall ring diameter
+    const stroke = 18;       // Ring band thickness
+    const r = (size - stroke) / 2;        // Radius (inset by half the stroke)
+    const circumference = 2 * Math.PI * r;
+    const clamped = Math.max(0, Math.min(progress, 100));
+    // How much of the circle to "hide" — the remainder shows as orange.
+    const dashOffset = circumference - (clamped / 100) * circumference;
+
+    return (
+        <View style={[ringStyles.wrap, { width: size, height: size }]}>
+            <Svg width={size} height={size}>
+                {/* Track — faint full ring */}
+                <Circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={r}
+                    stroke="rgba(255,255,255,0.07)"
+                    strokeWidth={stroke}
+                    fill="none"
+                />
+                {/* Progress arc — sweeps from the top (rotated -90°) */}
+                <Circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={r}
+                    stroke="#FF6B35"
+                    strokeWidth={stroke}
+                    fill="none"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                    strokeLinecap="round"
+                    transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                />
+            </Svg>
+
+            {/* Center content — absolutely centered over the ring */}
+            <View style={ringStyles.center}>
+                <Text style={ringStyles.centerValue}>{centerValue}</Text>
+                <Text style={ringStyles.centerLabel}>{centerLabel}</Text>
+            </View>
+        </View>
+    );
+}
+
+// ── A single macro progress bar (protein / fats / carbs) ──
+function MacroBar({
+    label,
+    logged,
+    goal,
+    color,
+}: {
+    label: string;
+    logged: number;
+    goal: number;
+    color: string;
+}) {
+    // If there's a goal, show progress against it; otherwise just show logged.
+    const pct = goal > 0 ? Math.min((logged / goal) * 100, 100) : 0;
+
+    return (
+        <View style={styles.macroBarRow}>
+            <View style={styles.macroBarHeader}>
+                <Text style={styles.macroBarLabel}>{label}</Text>
+                <Text style={styles.macroBarValue}>
+                    <Text style={{ color }}>{logged}g</Text>
+                    {goal > 0 ? (
+                        <Text style={styles.macroBarGoal}> / {goal}g</Text>
+                    ) : null}
+                </Text>
+            </View>
+            <View style={styles.macroBarTrack}>
+                <View
+                    style={[
+                        styles.macroBarFill,
+                        { width: `${goal > 0 ? pct : 100}%`, backgroundColor: color },
+                    ]}
+                />
+            </View>
+        </View>
+    );
+}
+
 export default function Dashboard() {
-    // Router lets us push to other screens like log-food
     const router = useRouter();
 
-    // ── State variables ──
-    // These hold the data that shows on screen
-    const [name, setName] = useState("");              // User's name from onboarding
-    const [calorieGoal, setCalorieGoal] = useState(0);      // Daily calorie goal
-    const [proteinGoal, setProteinGoal] = useState(0);      // Daily protein goal
-    const [caloriesLogged, setCaloriesLogged] = useState(0); // Calories logged today
-    const [proteinLogged, setProteinLogged] = useState(0);   // Protein logged today
-    const [fatsLogged, setFatsLogged] = useState(0);         // Fats logged today
-    const [carbsLogged, setCarbsLogged] = useState(0);       // Carbs logged today
-    const [currentWeight, setCurrentWeight] = useState("");   // User's current weight
+    // ── State ──
+    const [name, setName] = useState("");
+    const [calorieGoal, setCalorieGoal] = useState(0);
+    const [proteinGoal, setProteinGoal] = useState(0);
+    const [caloriesLogged, setCaloriesLogged] = useState(0);
+    const [proteinLogged, setProteinLogged] = useState(0);
+    const [fatsLogged, setFatsLogged] = useState(0);
+    const [carbsLogged, setCarbsLogged] = useState(0);
+    const [currentWeight, setCurrentWeight] = useState("");
 
     // ── Load all dashboard data ──
-    // Pulled out as its own function so it can be called both on screen
-    // focus AND after the user resets the day (to refresh the numbers).
     const loadData = useCallback(async () => {
         try {
-            // First, check if a new day has begun. If so, this archives
-            // yesterday's log and clears today so we start fresh.
+            // If a new day began, archive yesterday + start fresh.
             await checkAndRolloverDay();
 
-            // Profile + goals still live as simple stored values.
             const n = await AsyncStorage.getItem("userName");
             const cg = await AsyncStorage.getItem("calorieGoal");
             const pg = await AsyncStorage.getItem("proteinGoal");
@@ -78,8 +160,8 @@ export default function Dashboard() {
             if (pg) setProteinGoal(parseInt(pg));
             if (cw) setCurrentWeight(cw);
 
-            // Today's logged macros are CALCULATED from the items array,
-            // so they always match what's in the log history screen.
+            // Totals are summed from logged items, so they always match
+            // the log history.
             const totals = await getDailyTotals();
             setCaloriesLogged(totals.calories);
             setProteinLogged(totals.protein);
@@ -90,10 +172,6 @@ export default function Dashboard() {
         }
     }, []);
 
-    // ── Load data on every screen focus ──
-    // useFocusEffect runs every time the dashboard screen is opened.
-    // This makes sure the data is always fresh when you navigate back
-    // from the log-food screen.
     useFocusEffect(
         useCallback(() => {
             loadData();
@@ -101,9 +179,6 @@ export default function Dashboard() {
     );
 
     // ── Manually reset today's log ──
-    // Clears every food logged today (after a confirm dialog), then
-    // reloads the dashboard so the numbers drop back to zero. Useful when
-    // you want a fresh start mid-day. Does NOT touch archived history.
     const handleResetDay = () => {
         Alert.alert(
             "Reset today's log?",
@@ -115,18 +190,14 @@ export default function Dashboard() {
                     style: "destructive",
                     onPress: async () => {
                         await clearLoggedItems();
-                        loadData(); // Refresh — totals go back to zero
+                        loadData();
                     },
                 },
             ]
         );
     };
 
-    // ── Reset the entire app (profile + all data) ──
-    // Wipes everything from storage and sends the user back to the very
-    // start (the welcome/onboarding flow). This is how you re-run
-    // onboarding or start completely fresh. Later this will live in a
-    // proper Settings screen.
+    // ── Reset the entire app (profile + all data) → back to onboarding ──
     const handleResetApp = () => {
         Alert.alert(
             "Reset everything?",
@@ -138,7 +209,6 @@ export default function Dashboard() {
                     style: "destructive",
                     onPress: async () => {
                         await AsyncStorage.clear();
-                        // replace() so the dashboard isn't left in history
                         router.replace("/");
                     },
                 },
@@ -146,228 +216,350 @@ export default function Dashboard() {
         );
     };
 
-    // ── Calculated values ──
-    // How many calories and protein are left for the day
+    // ── Derived values ──
     const caloriesLeft = calorieGoal - caloriesLogged;
-    const proteinLeft = proteinGoal - proteinLogged;
-
-    // Calculate calorie progress percentage (capped at 100%)
     const calorieProgress =
-        calorieGoal > 0
-            ? Math.min((caloriesLogged / calorieGoal) * 100, 100)
-            : 0;
+        calorieGoal > 0 ? Math.min((caloriesLogged / calorieGoal) * 100, 100) : 0;
+    // Whether the user has gone over their goal (drives the "over" message).
+    const isOver = caloriesLeft < 0;
 
     return (
-        <ScrollView style={styles.container}>
-            {/* ── Greeting ── */}
-            <Text style={styles.greeting}>Let's get it, {name} 💪</Text>
-            <Text style={styles.subtitle}>Here's your goal for today</Text>
+        <ScrollView
+            style={styles.container}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+        >
+            {/* ── Header ── */}
+            <View style={styles.header}>
+                <Text style={styles.eyebrow}>TODAY</Text>
+                <Text style={styles.greeting}>
+                    Let's get it, {name || "champ"}.
+                </Text>
+            </View>
 
-            {/* ── Main calorie card ── */}
-            <View style={styles.mainCard}>
-                <Text style={styles.mainLabel}>CALORIES REMAINING</Text>
+            {/* ── Hero: calorie ring ── */}
+            <View style={styles.heroCard}>
+                <CalorieRing
+                    progress={calorieProgress}
+                    centerValue={Math.abs(caloriesLeft)}
+                    centerLabel={isOver ? "CALORIES OVER" : "CALORIES LEFT"}
+                />
 
-                {/* Big number showing calories left for the day */}
-                <Text style={styles.mainValue}>{caloriesLeft}</Text>
-
-                {/* Progress bar — fills orange as calories are logged */}
-                <View style={styles.progressBarBackground}>
-                    <View
-                        style={[
-                            styles.progressBarFill,
-                            { width: `${calorieProgress}%` },
-                        ]}
-                    />
+                {/* Goal vs logged, sitting under the ring */}
+                <View style={styles.heroStatsRow}>
+                    <View style={styles.heroStat}>
+                        <Text style={styles.heroStatValue}>{calorieGoal}</Text>
+                        <Text style={styles.heroStatLabel}>GOAL</Text>
+                    </View>
+                    <View style={styles.heroDivider} />
+                    <View style={styles.heroStat}>
+                        <Text style={styles.heroStatValue}>{caloriesLogged}</Text>
+                        <Text style={styles.heroStatLabel}>LOGGED</Text>
+                    </View>
                 </View>
 
-                {/* Goal vs logged side by side */}
-                <View style={styles.mainRow}>
-                    <Text style={styles.mainSub}>Goal: {calorieGoal}</Text>
-                    <Text style={styles.mainSub}>Logged: {caloriesLogged}</Text>
-                </View>
-
-                {/* Navigate to log food screen */}
+                {/* Primary action */}
                 <TouchableOpacity
                     style={styles.logButton}
                     onPress={() => router.push("/log-food")}
+                    activeOpacity={0.85}
                 >
                     <Text style={styles.logButtonText}>+ LOG FOOD</Text>
                 </TouchableOpacity>
-
-                {/* Navigate to the log history screen to view/edit/delete entries */}
-                <TouchableOpacity
-                    style={styles.viewLogButton}
-                    onPress={() => router.push("/log-history")}
-                >
-                    <Text style={styles.viewLogButtonText}>VIEW TODAY'S LOG</Text>
-                </TouchableOpacity>
-
-                {/* Navigate to the history screen to see past days */}
-                <TouchableOpacity
-                    style={styles.viewLogButton}
-                    onPress={() => router.push("/history")}
-                >
-                    <Text style={styles.viewLogButtonText}>VIEW HISTORY</Text>
-                </TouchableOpacity>
             </View>
 
-            {/* ── Macro cards — Protein, Fats, Carbs ── */}
-            {/* Three cards in a row showing each macro logged today */}
-            <View style={styles.macroGrid}>
-                {/* Protein card */}
+            {/* ── Macros ── */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>MACROS</Text>
                 <View style={styles.macroCard}>
-                    <Text style={[styles.macroLabel, { color: "#4A9EFF" }]}>PROTEIN</Text>
-                    <Text style={styles.macroValue}>{proteinLogged}g</Text>
-                    <Text style={styles.macroSub}>Goal: {proteinGoal}g</Text>
-                </View>
-
-                {/* Fats card */}
-                <View style={styles.macroCard}>
-                    <Text style={[styles.macroLabel, { color: "#FFB84D" }]}>FATS</Text>
-                    <Text style={styles.macroValue}>{fatsLogged}g</Text>
-                    <Text style={styles.macroSub}>logged</Text>
-                </View>
-
-                {/* Carbs card */}
-                <View style={styles.macroCard}>
-                    <Text style={[styles.macroLabel, { color: "#4DDB8F" }]}>CARBS</Text>
-                    <Text style={styles.macroValue}>{carbsLogged}g</Text>
-                    <Text style={styles.macroSub}>logged</Text>
+                    <MacroBar
+                        label="Protein"
+                        logged={proteinLogged}
+                        goal={proteinGoal}
+                        color="#4A9EFF"
+                    />
+                    <MacroBar
+                        label="Fats"
+                        logged={fatsLogged}
+                        goal={0}
+                        color="#FFB84D"
+                    />
+                    <MacroBar
+                        label="Carbs"
+                        logged={carbsLogged}
+                        goal={0}
+                        color="#4DDB8F"
+                    />
                 </View>
             </View>
 
-            {/* ── Bottom row — Weight ── */}
-            <View style={styles.grid}>
-                <View style={styles.card}>
-                    <Text style={styles.cardLabel}>PROTEIN LEFT</Text>
-                    <Text style={styles.cardValue}>{proteinLeft}g</Text>
-                    <Text style={styles.cardSub}>of {proteinGoal}g goal</Text>
-                </View>
-
-                <View style={styles.card}>
-                    <Text style={styles.cardLabel}>CURRENT WEIGHT</Text>
-                    <Text style={styles.cardValue}>{currentWeight}</Text>
-                    <Text style={styles.cardSub}>lbs</Text>
+            {/* ── Weight + quick links ── */}
+            <View style={styles.section}>
+                <View style={styles.dualRow}>
+                    <View style={styles.weightCard}>
+                        <Text style={styles.weightValue}>{currentWeight || "—"}</Text>
+                        <Text style={styles.weightLabel}>LBS</Text>
+                    </View>
+                    <View style={styles.linkColumn}>
+                        <TouchableOpacity
+                            style={styles.linkButton}
+                            onPress={() => router.push("/log-history")}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.linkButtonText}>Today's Log</Text>
+                            <Text style={styles.linkChevron}>›</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.linkButton}
+                            onPress={() => router.push("/history")}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.linkButtonText}>History</Text>
+                            <Text style={styles.linkChevron}>›</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
 
-            {/* ── Reset today's log ──
-                A low-emphasis action at the bottom — clears today's foods
-                after a confirm dialog. The daily rollover handles this
-                automatically each new day, so this is just for a manual
-                fresh start. */}
-            <TouchableOpacity
-                style={styles.resetButton}
-                onPress={handleResetDay}
-            >
+            {/* ── Low-emphasis utilities ── */}
+            <TouchableOpacity style={styles.resetButton} onPress={handleResetDay}>
                 <Text style={styles.resetButtonText}>Reset Today's Log</Text>
             </TouchableOpacity>
-
-            {/* Full reset — wipes profile + data and returns to onboarding.
-                Useful for starting fresh or re-running onboarding. Will move
-                into a Settings screen later. */}
-            <TouchableOpacity
-                style={styles.resetAppButton}
-                onPress={handleResetApp}
-            >
+            <TouchableOpacity style={styles.resetAppButton} onPress={handleResetApp}>
                 <Text style={styles.resetAppButtonText}>Reset Everything</Text>
             </TouchableOpacity>
         </ScrollView>
     );
 }
 
-// ── Styles ──
-// Same dark purple + orange theme as the rest of the app
+// ── Ring styles ──
+const ringStyles = StyleSheet.create({
+    wrap: {
+        alignItems: "center",
+        justifyContent: "center",
+        alignSelf: "center",
+    },
+    center: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    centerValue: {
+        color: "#ffffff",
+        fontSize: 60,
+        fontWeight: "900",
+        letterSpacing: -2,
+    },
+    centerLabel: {
+        color: "rgba(255,255,255,0.45)",
+        fontSize: 12,
+        fontWeight: "700",
+        letterSpacing: 3,
+        marginTop: 2,
+    },
+});
+
+// ── Screen styles ──
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#0f0c29",
-        padding: 24,
+    },
+
+    // Header
+    header: {
+        paddingHorizontal: 24,
+        paddingTop: 64,
+        marginBottom: 20,
+    },
+    eyebrow: {
+        color: "#FF6B35",
+        fontSize: 12,
+        fontWeight: "800",
+        letterSpacing: 4,
+        marginBottom: 6,
     },
     greeting: {
         color: "#ffffff",
-        fontSize: 26,
-        fontWeight: "800",
-        marginTop: 60,
-    },
-    subtitle: {
-        color: "rgba(255,255,255,0.4)",
-        fontSize: 14,
-        marginTop: 4,
-        marginBottom: 24,
+        fontSize: 30,
+        fontWeight: "900",
+        letterSpacing: -0.5,
     },
 
-    // ── Main calorie card ──
-    mainCard: {
-        backgroundColor: "rgba(255,107,53,0.1)",
+    // Hero card
+    heroCard: {
+        marginHorizontal: 20,
+        backgroundColor: "rgba(255,255,255,0.04)",
         borderWidth: 1,
-        borderColor: "rgba(255,107,53,0.3)",
-        borderRadius: 20,
-        padding: 24,
-        marginBottom: 16,
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 28,
+        paddingVertical: 32,
+        paddingHorizontal: 24,
+        alignItems: "center",
     },
-    mainLabel: {
-        color: "#FF6B35",
+    heroStatsRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 28,
+        marginBottom: 24,
+    },
+    heroStat: {
+        alignItems: "center",
+        paddingHorizontal: 28,
+    },
+    heroStatValue: {
+        color: "#ffffff",
+        fontSize: 24,
+        fontWeight: "800",
+    },
+    heroStatLabel: {
+        color: "rgba(255,255,255,0.4)",
         fontSize: 11,
         fontWeight: "700",
         letterSpacing: 2,
-        marginBottom: 8,
-    },
-    mainValue: {
-        color: "#ffffff",
-        fontSize: 64,
-        fontWeight: "900",
-    },
-    progressBarBackground: {
-        backgroundColor: "rgba(255,255,255,0.1)",
-        borderRadius: 6,
-        height: 8,
-        marginBottom: 20,
-    },
-    progressBarFill: {
-        backgroundColor: "#FF6B35",
-        borderRadius: 6,
-        height: 8,
-    },
-    mainRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
         marginTop: 4,
-        marginBottom: 20,
     },
-    mainSub: {
-        color: "rgba(255,255,255,0.4)",
-        fontSize: 13,
+    heroDivider: {
+        width: 1,
+        height: 36,
+        backgroundColor: "rgba(255,255,255,0.1)",
     },
     logButton: {
         backgroundColor: "#FF6B35",
-        paddingVertical: 14,
-        borderRadius: 12,
+        paddingVertical: 18,
+        borderRadius: 16,
         alignItems: "center",
+        alignSelf: "stretch",
+        // A soft orange glow to make the CTA feel energetic.
+        shadowColor: "#FF6B35",
+        shadowOpacity: 0.5,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
     },
     logButtonText: {
         color: "#ffffff",
-        fontSize: 14,
-        fontWeight: "800",
+        fontSize: 15,
+        fontWeight: "900",
         letterSpacing: 2,
     },
-    viewLogButton: {
-        paddingVertical: 12,
-        borderRadius: 12,
-        alignItems: "center",
-        marginTop: 10,
+
+    // Sections
+    section: {
+        marginTop: 28,
+        paddingHorizontal: 24,
     },
-    viewLogButtonText: {
-        color: "rgba(255,255,255,0.5)",
+    sectionTitle: {
+        color: "rgba(255,255,255,0.4)",
         fontSize: 12,
+        fontWeight: "800",
+        letterSpacing: 3,
+        marginBottom: 14,
+    },
+
+    // Macro card
+    macroCard: {
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 20,
+        padding: 20,
+    },
+    macroBarRow: {
+        marginBottom: 18,
+    },
+    macroBarHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 8,
+    },
+    macroBarLabel: {
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    macroBarValue: {
+        fontSize: 14,
+        fontWeight: "700",
+    },
+    macroBarGoal: {
+        color: "rgba(255,255,255,0.35)",
+        fontWeight: "600",
+    },
+    macroBarTrack: {
+        height: 8,
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderRadius: 4,
+        overflow: "hidden",
+    },
+    macroBarFill: {
+        height: "100%",
+        borderRadius: 4,
+    },
+
+    // Weight + links
+    dualRow: {
+        flexDirection: "row",
+        gap: 12,
+    },
+    weightCard: {
+        flex: 1,
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 20,
+        padding: 20,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    weightValue: {
+        color: "#ffffff",
+        fontSize: 36,
+        fontWeight: "900",
+    },
+    weightLabel: {
+        color: "rgba(255,255,255,0.4)",
+        fontSize: 11,
         fontWeight: "700",
         letterSpacing: 2,
+        marginTop: 2,
     },
+    linkColumn: {
+        flex: 1,
+        gap: 12,
+    },
+    linkButton: {
+        flex: 1,
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 16,
+        paddingHorizontal: 18,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    linkButtonText: {
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    linkChevron: {
+        color: "#FF6B35",
+        fontSize: 22,
+        fontWeight: "700",
+    },
+
+    // Utilities
     resetButton: {
         paddingVertical: 16,
         alignItems: "center",
-        marginTop: 8,
-        marginBottom: 32,
+        marginTop: 24,
     },
     resetButtonText: {
         color: "rgba(255,107,53,0.7)",
@@ -375,73 +567,12 @@ const styles = StyleSheet.create({
         fontWeight: "600",
     },
     resetAppButton: {
-        paddingVertical: 12,
+        paddingVertical: 8,
         alignItems: "center",
-        marginBottom: 32,
     },
     resetAppButtonText: {
-        color: "rgba(255,70,70,0.6)",
+        color: "rgba(255,70,70,0.55)",
         fontSize: 13,
         fontWeight: "500",
-    },
-
-    // ── Macro cards row (Protein / Fats / Carbs) ──
-    macroGrid: {
-        flexDirection: "row",
-        gap: 10,
-        marginBottom: 16,
-    },
-    macroCard: {
-        flex: 1,
-        backgroundColor: "rgba(255,255,255,0.05)",
-        borderRadius: 16,
-        padding: 16,
-        alignItems: "center",
-    },
-    macroLabel: {
-        fontSize: 9,
-        fontWeight: "700",
-        letterSpacing: 2,
-        marginBottom: 6,
-    },
-    macroValue: {
-        color: "#ffffff",
-        fontSize: 22,
-        fontWeight: "800",
-    },
-    macroSub: {
-        color: "rgba(255,255,255,0.3)",
-        fontSize: 11,
-        marginTop: 4,
-    },
-
-    // ── Bottom cards (Protein Left / Weight) ──
-    grid: {
-        flexDirection: "row",
-        gap: 12,
-        marginBottom: 40,
-    },
-    card: {
-        flex: 1,
-        backgroundColor: "rgba(255,255,255,0.05)",
-        borderRadius: 20,
-        padding: 20,
-    },
-    cardLabel: {
-        color: "#FF6B35",
-        fontSize: 10,
-        fontWeight: "700",
-        letterSpacing: 2,
-        marginBottom: 8,
-    },
-    cardValue: {
-        color: "#ffffff",
-        fontSize: 32,
-        fontWeight: "800",
-    },
-    cardSub: {
-        color: "rgba(255,255,255,0.4)",
-        fontSize: 12,
-        marginTop: 4,
     },
 });
