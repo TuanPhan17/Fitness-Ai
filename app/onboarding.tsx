@@ -23,7 +23,10 @@ export default function Onboarding() {
     const [name, setName] = useState("");
     const [age, setAge] = useState("");
     const [gender, setGender] = useState("");
-    const [height, setHeight] = useState("");
+    // Height is split into feet + inches so the math is accurate. A single
+    // "5ft 10in" text box would lose the inches when parsed as a number.
+    const [heightFeet, setHeightFeet] = useState("");
+    const [heightInches, setHeightInches] = useState("");
     const [currentWeight, setCurrentWeight] = useState("");
     const [goalWeight, setGoalWeight] = useState("");
     const [activity, setActivity] = useState("");
@@ -50,8 +53,11 @@ export default function Onboarding() {
     const handleFinish = async () => {
         // Convert weight from lbs to kg for the formula
         const weightKg = parseFloat(currentWeight) * 0.453592;
-        // Convert height from feet to cm for the formula
-        const heightCm = parseFloat(height) * 30.48;
+        // Convert height to cm. Total inches = (feet × 12) + inches, then
+        // × 2.54 cm/inch. This correctly accounts for the inches, which the
+        // old single-field version silently dropped.
+        const totalInches = parseInt(heightFeet || "0") * 12 + parseInt(heightInches || "0");
+        const heightCm = totalInches * 2.54;
         const ageNum = parseInt(age);
         const deficitNum = parseInt(deficit || "0");
 
@@ -77,7 +83,9 @@ export default function Onboarding() {
         await AsyncStorage.setItem("userName", name);
         await AsyncStorage.setItem("age", age);
         await AsyncStorage.setItem("gender", gender);
-        await AsyncStorage.setItem("height", height);
+        // Store height as total inches (a clean single number) so other
+        // screens can read it back without re-parsing "5ft 10in" text.
+        await AsyncStorage.setItem("heightInches", totalInches.toString());
         await AsyncStorage.setItem("currentWeight", currentWeight);
         await AsyncStorage.setItem("goalWeight", goalWeight);
         await AsyncStorage.setItem("activity", activity);
@@ -136,15 +144,34 @@ export default function Onboarding() {
                     ))}
                 </View>
 
-                {/* Height input */}
+                {/* Height input — split into feet + inches for accuracy */}
                 <Text style={styles.label}>HEIGHT</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="e.g. 5ft 10in"
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                    value={height}
-                    onChangeText={setHeight}
-                />
+                <View style={styles.row}>
+                    <View style={styles.heightField}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="5"
+                            placeholderTextColor="rgba(255,255,255,0.3)"
+                            keyboardType="numeric"
+                            value={heightFeet}
+                            onChangeText={setHeightFeet}
+                            maxLength={1}
+                        />
+                        <Text style={styles.unitLabel}>ft</Text>
+                    </View>
+                    <View style={styles.heightField}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="10"
+                            placeholderTextColor="rgba(255,255,255,0.3)"
+                            keyboardType="numeric"
+                            value={heightInches}
+                            onChangeText={setHeightInches}
+                            maxLength={2}
+                        />
+                        <Text style={styles.unitLabel}>in</Text>
+                    </View>
+                </View>
 
                 {/* Current weight input */}
                 <Text style={styles.label}>CURRENT WEIGHT (lbs)</Text>
@@ -253,6 +280,18 @@ const styles = StyleSheet.create({
     row: {
         flexDirection: "row", // Side by side
         gap: 12,
+    },
+    heightField: {
+        flex: 1,                // Each height field takes half the row
+        position: "relative",   // So the unit label can sit inside it
+        justifyContent: "center",
+    },
+    unitLabel: {
+        position: "absolute",   // Float "ft"/"in" on the right of the input
+        right: 16,
+        color: "rgba(255,255,255,0.4)",
+        fontSize: 15,
+        fontWeight: "600",
     },
     optionButton: {
         flex: 1,              // Equal width buttons

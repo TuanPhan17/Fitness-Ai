@@ -122,6 +122,30 @@ export default function Dashboard() {
         );
     };
 
+    // ── Reset the entire app (profile + all data) ──
+    // Wipes everything from storage and sends the user back to the very
+    // start (the welcome/onboarding flow). This is how you re-run
+    // onboarding or start completely fresh. Later this will live in a
+    // proper Settings screen.
+    const handleResetApp = () => {
+        Alert.alert(
+            "Reset everything?",
+            "This erases your profile, goals, and all logged food. You'll start over from onboarding. This can't be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Erase & Restart",
+                    style: "destructive",
+                    onPress: async () => {
+                        await AsyncStorage.clear();
+                        // replace() so the dashboard isn't left in history
+                        router.replace("/");
+                    },
+                },
+            ]
+        );
+    };
+
     // ── Calculated values ──
     // How many calories and protein are left for the day
     const caloriesLeft = calorieGoal - caloriesLogged;
@@ -238,6 +262,16 @@ export default function Dashboard() {
             >
                 <Text style={styles.resetButtonText}>Reset Today's Log</Text>
             </TouchableOpacity>
+
+            {/* Full reset — wipes profile + data and returns to onboarding.
+                Useful for starting fresh or re-running onboarding. Will move
+                into a Settings screen later. */}
+            <TouchableOpacity
+                style={styles.resetAppButton}
+                onPress={handleResetApp}
+            >
+                <Text style={styles.resetAppButtonText}>Reset Everything</Text>
+            </TouchableOpacity>
         </ScrollView>
     );
 }
@@ -339,6 +373,16 @@ const styles = StyleSheet.create({
         color: "rgba(255,107,53,0.7)",
         fontSize: 14,
         fontWeight: "600",
+    },
+    resetAppButton: {
+        paddingVertical: 12,
+        alignItems: "center",
+        marginBottom: 32,
+    },
+    resetAppButtonText: {
+        color: "rgba(255,70,70,0.6)",
+        fontSize: 13,
+        fontWeight: "500",
     },
 
     // ── Macro cards row (Protein / Fats / Carbs) ──
