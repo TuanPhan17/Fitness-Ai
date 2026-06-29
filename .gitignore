@@ -42,3 +42,8 @@ app-example
 /ios
 /android
 
+
+# backend env (Gemini key — never commit)
+backend/.env
+__pycache__/
+*.pyc
